@@ -1,6 +1,8 @@
 """File storage and SQLite storage with the same public model operations."""
 
 import json
+from contextlib import contextmanager
+import sqlite3
 import threading
 import time
 from pathlib import Path
@@ -145,3 +147,161 @@ class FileStore:
                     })
         return rows
 
+
+class SQLiteStore:
+    """Persist the same entities using explicit SQL statements (no ORM)."""
+
+    def __init__(self, path):
+        self.path = Path(path)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.lock = threading.RLock()
+        with self._connect() as db:
+            db.executescript("""
+                CREATE TABLE IF NOT EXISTS participant (
+                    identifier INTEGER PRIMARY KEY AUTOINCREMENT,
+                    datetime INTEGER NOT NULL,
+                    locale TEXT NOT NULL,
+                    platform TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS assignment (
+                    identifier INTEGER PRIMARY KEY AUTOINCREMENT,
+                    datetime INTEGER NOT NULL,
+                    input TEXT NOT NULL,
+                    participant INTEGER NOT NULL,
+                    tags TEXT NOT NULL,
+                    stage TEXT NOT NULL,
+                    FOREIGN KEY (participant)
+                        REFERENCES participant(identifier)
+                );
+                CREATE TABLE IF NOT EXISTS result (
+                    identifier INTEGER PRIMARY KEY AUTOINCREMENT,
+                    datetime INTEGER NOT NULL,
+                    response TEXT NOT NULL,
+                    stage TEXT NOT NULL,
+                    exception TEXT NOT NULL,
+                    assignment INTEGER NOT NULL,
+                    cache_hit INTEGER NOT NULL,
+                    FOREIGN KEY (assignment) REFERENCES assignment(identifier)
+                );
+            """)
+
+    @contextmanager
+    def _connect(self):
+        """Open, commit or roll back, then close one SQLite connection."""
+        db = sqlite3.connect(str(self.path), timeout=10)
+        try:
+            db.row_factory = sqlite3.Row
+            db.execute("PRAGMA foreign_keys = ON")
+            yield db
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            db.close()
+
+    def _select(self, table, filters):
+        allowed = {
+            "participant": {"identifier", "locale", "platform"},
+            "assignment": {"identifier", "participant", "stage"},
+            "result": {"identifier", "assignment", "stage"},
+        }
+        clauses = []
+        parameters = []
+        for key, value in filters.items():
+            if key not in allowed[table]:
+                raise ValueError(f"Unsupported filter: {key}")
+            if value is not None and value != "":
+                clauses.append(f"{key} = ?")
+                parameters.append(value)
+        query = f"SELECT * FROM {table}"
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+        query += " ORDER BY identifier"
+        with self.lock, self._connect() as db:
+            return [dict(row) for row in db.execute(query, parameters)]
+
+    def _insert(self, table, values):
+        columns = ", ".join(values)
+        placeholders = ", ".join("?" for _ in values)
+        query = f"INSERT INTO {table} ({columns}) VALUES ({placeholders})"
+        with self.lock, self._connect() as db:
+            cursor = db.execute(query, tuple(values.values()))
+            identifier = cursor.lastrowid
+            return dict(db.execute(
+                f"SELECT * FROM {table} WHERE identifier = ?",
+                (identifier,),
+            ).fetchone())
+
+    def _update(self, table, identifier, values):
+        columns = ", ".join(f"{name} = ?" for name in values)
+        query = f"UPDATE {table} SET {columns} WHERE identifier = ?"
+        with self.lock, self._connect() as db:
+            db.execute(query, (*values.values(), identifier))
+            row = db.execute(
+                f"SELECT * FROM {table} WHERE identifier = ?",
+                (identifier,),
+            ).fetchone()
+            return dict(row) if row else None
+
+    def participant_add(self, locale, platform):
+        return self._insert(
+            "participant",
+            {"datetime": _now(), "locale": locale, "platform": platform},
+        )
+
+    def participant_read(self, **filters):
+        return self._select("participant", filters)
+
+    def participant_retrieve(self, identifier):
+        rows = self.participant_read(identifier=identifier)
+        return rows[0] if rows else None
+
+    def assignment_add(self, participant, input_name, tags):
+        return self._insert(
+            "assignment",
+            {"datetime": _now(), "input": input_name,
+             "participant": participant, "tags": tags, "stage": "queued"},
+        )
+
+    def assignment_read(self, **filters):
+        return self._select("assignment", filters)
+
+    def assignment_retrieve(self, identifier):
+        rows = self.assignment_read(identifier=identifier)
+        return rows[0] if rows else None
+
+    def assignment_stage(self, identifier, stage):
+        return self._update("assignment", identifier, {"stage": stage})
+
+    def result_add(self, assignment, response, stage, exception, cache_hit):
+        return self._insert(
+            "result",
+            {"datetime": _now(), "response": response, "stage": stage,
+             "exception": exception, "assignment": assignment,
+             "cache_hit": cache_hit},
+        )
+
+    def result_read(self, **filters):
+        return self._select("result", filters)
+
+    def result_retrieve(self, identifier):
+        rows = self.result_read(identifier=identifier)
+        return rows[0] if rows else None
+
+    def result_update(self, identifier, **values):
+        return self._update("result", identifier, values)
+
+    def report_read(self, seconds=300):
+        query = """
+            SELECT a.input, p.platform, r.cache_hit
+            FROM participant AS p
+            LEFT JOIN assignment AS a ON a.participant = p.identifier
+            LEFT JOIN result AS r ON r.assignment = a.identifier
+                AND r.datetime >= ?
+            ORDER BY p.identifier, a.identifier, r.identifier
+        """
+        with self.lock, self._connect() as db:
+            return [
+                dict(row) for row in db.execute(query, (_now() - seconds,))
+            ]

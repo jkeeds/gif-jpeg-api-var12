@@ -16,7 +16,7 @@ from hypothesis.stateful import (
 from src.api import create_app
 from src.client import ApiClient
 from src.service import ConversionService
-from src.storage import FileStore
+from src.storage import FileStore, SQLiteStore
 
 
 USERNAME = "test-user"
@@ -39,7 +39,10 @@ class ApiMachine(RuleBasedStateMachine):
         super().__init__()
         self.folder = tempfile.TemporaryDirectory()
         root = Path(self.folder.name)
-        store = FileStore(root / "records.json")
+        if self.backend == "sqlite":
+            store = SQLiteStore(root / "records.sqlite3")
+        else:
+            store = FileStore(root / "records.json")
         self.service = ConversionService(
             store, root / "uploads", root / "outputs", test_mode=True,
         )
@@ -165,8 +168,17 @@ class FileApiMachine(ApiMachine):
     backend = "file"
 
 
+class SQLiteApiMachine(ApiMachine):
+    """Repeat the same model tests using SQL storage."""
+
+    backend = "sqlite"
+
 
 TestFileApi = FileApiMachine.TestCase
+TestSQLiteApi = SQLiteApiMachine.TestCase
 TestFileApi.settings = settings(
+    max_examples=12, stateful_step_count=10, deadline=None,
+)
+TestSQLiteApi.settings = settings(
     max_examples=12, stateful_step_count=10, deadline=None,
 )

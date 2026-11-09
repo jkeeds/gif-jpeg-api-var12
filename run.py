@@ -8,7 +8,7 @@ from bottle import run
 
 from src.api import create_app
 from src.service import ConversionService
-from src.storage import FileStore
+from src.storage import FileStore, SQLiteStore
 
 
 ROOT = Path(__file__).resolve().parent
@@ -25,7 +25,7 @@ def load_auth(config_path):
 def main(argv=None):
     """Configure and start the HTTP server."""
     parser = argparse.ArgumentParser(description="GIF to JPEG HTTP API")
-    parser.add_argument("--backend", choices=("file",),
+    parser.add_argument("--backend", choices=("file", "sqlite"),
                         default="file")
     parser.add_argument("--config", type=Path, default=ROOT / "config.ini")
     parser.add_argument("--test-mode", action="store_true")
@@ -34,7 +34,12 @@ def main(argv=None):
     args = parser.parse_args(argv)
     username, password = load_auth(args.config)
     folder = ROOT / "data"
-    store = FileStore(folder / "records.json")
+    backend_path = folder / (
+        "database.sqlite3" if args.backend == "sqlite" else "records.json"
+    )
+    store = SQLiteStore(backend_path) if args.backend == "sqlite" else (
+        FileStore(backend_path)
+    )
     service = ConversionService(
         store, folder / "uploads", folder / "outputs", args.test_mode,
     )
