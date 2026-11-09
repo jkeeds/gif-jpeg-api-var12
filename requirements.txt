@@ -1,1 +1,4 @@
+bottle>=0.13,<1
 Pillow>=10,<13
+hypothesis>=6,<7
+coverage>=7,<9
