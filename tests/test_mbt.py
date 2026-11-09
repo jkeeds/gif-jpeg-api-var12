@@ -1,10 +1,10 @@
 """Hypothesis MBT for the nine API routes and both backends."""
 
 import tempfile
+import threading
+import unittest
 import urllib.error
 import urllib.request
-import unittest
-import threading
 from pathlib import Path
 from wsgiref.simple_server import WSGIRequestHandler, make_server
 
@@ -21,6 +21,8 @@ from src.storage import FileStore, SQLiteStore
 
 USERNAME = "test-user"
 PASSWORD = "test-password"
+ONE_RESULT = 1
+HTTP_UNAUTHORIZED = 401
 
 
 class QuietHandler(WSGIRequestHandler):
@@ -90,12 +92,25 @@ class ApiMachine(RuleBasedStateMachine):
         assert assignment in api.core_api_stable_read_assignment(person_id)
 
         results = api.core_api_stable_read_result(assignment_id)
-        assert len(results) == 1
+        assert len(results) == ONE_RESULT
         assert results[0]["stage"] == "test"
         result_id = int(results[0]["identifier"])
         assert api.core_api_stable_retrieve_result(result_id) == results[0]
         report = api.core_api_stable_read_report()
         assert any(row["input"] == "first.gif" for row in report)
+        self.check_unassigned_participant()
+
+    def check_unassigned_participant(self):
+        """Right outer join excludes participants without assignments."""
+        item = self.client.core_api_stable_add_participant(
+            "ru", "unassigned-participant",
+        )
+        self.participants.append(int(item["identifier"]))
+        report = self.client.core_api_stable_read_report()
+        assert all(
+            row["platform"] != "unassigned-participant"
+            for row in report
+        )
 
     @rule()
     def unauthenticated_is_rejected(self):
@@ -105,7 +120,7 @@ class ApiMachine(RuleBasedStateMachine):
             urllib.error.HTTPError
         ) as caught:
             urllib.request.urlopen(url, timeout=10)
-        assert caught.exception.code == 401
+        assert caught.exception.code == HTTP_UNAUTHORIZED
 
     @rule(platform=st.sampled_from(["desktop", "mobile", "web"]),
           locale=st.sampled_from(["ru", "en", "de"]))
@@ -136,7 +151,7 @@ class ApiMachine(RuleBasedStateMachine):
         self.assignments.append((identifier, participant))
         assert item["stage"] == "test"
         results = self.client.core_api_stable_read_result(identifier)
-        assert len(results) == 1
+        assert len(results) == ONE_RESULT
         assert results[0]["assignment"] == str(identifier)
 
     @rule(choice=st.integers(min_value=0, max_value=100))

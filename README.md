@@ -24,9 +24,9 @@ cp config.ini.example config.ini
 ## Этап 1 — консольная утилита
 
 ```bash
+python -m scripts.create_sample
 python -m src.converter data/uploads/sample.gif data/outputs/sample.jpg
 python -m scripts.demo_three_gifs
-python -m scripts.create_sample
 python -m unittest tests.test_converter -v
 ```
 
@@ -105,7 +105,7 @@ curl -u admin:change-me "http://127.0.0.1:8000/core/api/stable/read-report"
 
 ### Реляционная алгебра: отчёт по формуле (12)
 
-Возвращаются столбцы **`Assignment.input`, `Participant.platform`, `Result.cache_hit`**. Объединяются участники с заданиями и задания с результатами, у которых `Result.datetime >= now - 5 min`; используются внешние соединения. У записей без подходящего результата будет XML-атрибут `null="true"`. Значение `cache_hit` всегда 0: этот учебный конвертер не выполняет кеширование. В JSON и SQLite реализована одна и та же логика отчёта.
+Возвращаются столбцы **`Assignment.input`, `Participant.platform`, `Result.cache_hit`**. Сначала используется правое внешнее соединение `Participant` с `Assignment` (с учётом внешнего ключа эквивалентно внутреннему), затем левое внешнее соединение с результатами за последние 5 минут (`Result.datetime >= now - 5 min`). Участники без заданий в отчёт не попадают. У записей без подходящего результата будет XML-атрибут `null="true"`. Значение `cache_hit` всегда 0: этот учебный конвертер не выполняет кеширование. В JSON и SQLite реализована одна и та же логика отчёта.
 
 ## Этап 3 — SQLite на SQL-запросах
 

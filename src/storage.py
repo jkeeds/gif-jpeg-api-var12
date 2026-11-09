@@ -1,10 +1,10 @@
 """File storage and SQLite storage with the same public model operations."""
 
 import json
-from contextlib import contextmanager
 import sqlite3
 import threading
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 
@@ -132,16 +132,15 @@ class FileStore:
                 assignment for assignment in assignments
                 if assignment["participant"] == person["identifier"]
             ]
-            for assignment in linked or [None]:
+            for assignment in linked:
                 recent = [
                     item for item in results
-                    if assignment is not None
-                    and item["assignment"] == assignment["identifier"]
+                    if item["assignment"] == assignment["identifier"]
                     and item["datetime"] >= threshold
                 ]
                 for item in recent or [None]:
                     rows.append({
-                        "input": assignment["input"] if assignment else None,
+                        "input": assignment["input"],
                         "platform": person["platform"],
                         "cache_hit": item["cache_hit"] if item else None,
                     })
@@ -296,7 +295,7 @@ class SQLiteStore:
         query = """
             SELECT a.input, p.platform, r.cache_hit
             FROM participant AS p
-            LEFT JOIN assignment AS a ON a.participant = p.identifier
+            JOIN assignment AS a ON a.participant = p.identifier
             LEFT JOIN result AS r ON r.assignment = a.identifier
                 AND r.datetime >= ?
             ORDER BY p.identifier, a.identifier, r.identifier

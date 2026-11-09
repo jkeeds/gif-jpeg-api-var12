@@ -9,6 +9,7 @@ from bottle import Bottle, HTTPResponse, request, response
 
 
 PREFIX = "/core/api/stable"
+MIN_IDENTIFIER = 1
 
 
 def xml_document(payload):
@@ -37,8 +38,12 @@ def _is_authorized(header, username, password):
     except (ValueError, UnicodeError, binascii.Error):
         return False
     return (
-        hmac.compare_digest(candidate_user, username)
-        and hmac.compare_digest(candidate_password, password)
+        hmac.compare_digest(
+            candidate_user.encode("utf-8"), username.encode("utf-8")
+        )
+        and hmac.compare_digest(
+            candidate_password.encode("utf-8"), password.encode("utf-8")
+        )
     )
 
 
@@ -65,7 +70,7 @@ def required_id(name="id"):
     if value is None:
         raise ValueError(f"Missing parameter: {name}")
     identifier = int(value)
-    if identifier <= 0:
+    if identifier < MIN_IDENTIFIER:
         raise ValueError("Identifier must be positive")
     return identifier
 
