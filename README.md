@@ -131,6 +131,133 @@ python -m coverage html
 
 Клиент `src/client.py`: имена девяти публичных методов полностью соответствуют путям таблицы 12 после замены `/` и `-` на `_`, например `core_api_stable_add_participant`.
 
+## Полное описание функций и настроек
+
+В этом разделе перечислены функции и публичные методы проекта, в том числе
+внутренние вспомогательные операции. Начальный символ `_` в имени означает,
+что метод предназначен для внутреннего использования.
+
+### Конвертер и запуск
+
+| Файл | Функция | Назначение |
+|---|---|---|
+| `src/converter.py` | `convert_gif(input_path, output_path)` | Проверяет входной GIF, берёт первый кадр, создаёт белый фон, сохраняет JPEG и возвращает путь. |
+| `src/converter.py` | `main(argv)` | Обрабатывает два аргумента CLI, запускает конвертер и сообщает об ошибке. |
+| `scripts/create_sample.py` | `main()` | Создаёт анимированный пример `data/uploads/sample.gif`. |
+| `scripts/demo_three_gifs.py` | `main()` | Создаёт три тестовых GIF и проверяет полученные JPEG. |
+| `run.py` | `load_auth(config_path)` | Читает логин и пароль Basic Auth из INI-файла. |
+| `run.py` | `main(argv)` | Разбирает настройки запуска, создаёт хранилище, сервис и Bottle-сервер. |
+
+### HTTP API — `src/api.py`
+
+| Функция | Назначение |
+|---|---|
+| `xml_document` | Преобразует запись или список записей в XML. |
+| `_is_authorized` | Проверяет HTTP Basic Auth, сравнивая учётные данные безопасным способом. |
+| `wrap_result` | Формирует XML-ответ и коды 400/404 для ошибок данных. |
+| `required_id` | Извлекает положительный числовой идентификатор из query string. |
+| `register_participant_routes` | Регистрирует три обработчика для Participant. |
+| `add_participant`, `read_participant`, `retrieve_participant` | Создают, ищут и читают участника. |
+| `register_assignment_routes` | Регистрирует три обработчика для Assignment. |
+| `add_assignment`, `read_assignment`, `retrieve_assignment` | Создают, ищут и читают задание. |
+| `register_result_routes` | Регистрирует два обработчика для Result. |
+| `read_result`, `retrieve_result` | Ищут и читают результат. |
+| `create_app` | Создаёт Bottle-приложение и маршрут отчёта. |
+| `authenticate` | Хук, отклоняющий неавторизованные запросы с HTTP 401. |
+| `response_type` | Хук, устанавливающий тип XML-ответа. |
+
+Обработчики `add_*`, `read_*`, `retrieve_*`, `authenticate` и
+`response_type` объявляются внутри функций регистрации маршрутов или
+`create_app`; их нельзя вызывать как самостоятельный импортируемый API.
+
+### Асинхронная обработка — `src/service.py`
+
+| Метод `ConversionService` | Назначение |
+|---|---|
+| `__init__` | Подготавливает каталоги и пул из двух рабочих потоков. |
+| `add_assignment` | Проверяет файл и участника, сохраняет задачу и запускает обработку либо тестовый режим. |
+| `_finish` | Согласованно обновляет статусы Assignment и Result. |
+| `_convert` | Запускает отдельный процесс CLI через `subprocess.run`, фиксирует итог. |
+| `close` | Останавливает пул и дожидается завершения заданий. |
+
+### Модели данных — `src/storage.py`
+
+`FileStore` сохраняет записи в JSON-файле, `SQLiteStore` использует таблицы
+SQLite с параметризованными SQL-запросами. Обе реализации предоставляют
+одинаковые методы предметной модели:
+
+| Метод | Назначение |
+|---|---|
+| `__init__` | Создаёт или открывает хранилище и таблицы. |
+| `participant_add`, `participant_read`, `participant_retrieve` | Добавляют, фильтруют и находят участника по ID. |
+| `assignment_add`, `assignment_read`, `assignment_retrieve` | Добавляют, фильтруют и находят задания. |
+| `assignment_stage` | Обновляет этап выполнения задания. |
+| `result_add`, `result_read`, `result_retrieve` | Добавляют, фильтруют и находят результаты. |
+| `result_update` | Изменяет поля существующего результата. |
+| `report_read` | Строит отчёт по формуле (12), по умолчанию за последние 300 секунд. |
+
+Вспомогательные функции и методы: `_now` возвращает Unix-время;
+`_where_matches` проверяет условия фильтра; `FileStore._load`,
+`_save`, `_add`, `_read`, `_retrieve`, `_update` работают с JSON;
+`SQLiteStore._connect` открывает транзакцию с откатом при ошибке,
+`_select` составляет фильтрованный SELECT, `_insert` выполняет INSERT,
+`_update` выполняет UPDATE. Использование блокировок защищает операции
+хранилища от одновременной записи несколькими потоками.
+
+### HTTP-клиент — `src/client.py`
+
+`ApiClient.__init__` сохраняет адрес сервера и создаёт заголовок Basic Auth.
+`ApiClient._request` выполняет HTTP-запрос и разбирает XML в список словарей.
+Девять публичных методов имеют имена, производные от маршрутов таблицы 12:
+
+| Метод `ApiClient` | Действие |
+|---|---|
+| `core_api_stable_add_participant` | Создать участника. |
+| `core_api_stable_read_participant` | Найти участников. |
+| `core_api_stable_retrieve_participant` | Получить одного участника. |
+| `core_api_stable_add_assignment` | Создать задачу конвертации. |
+| `core_api_stable_read_assignment` | Найти задачи участника. |
+| `core_api_stable_retrieve_assignment` | Получить одну задачу. |
+| `core_api_stable_read_result` | Найти результаты задачи. |
+| `core_api_stable_retrieve_result` | Получить один результат. |
+| `core_api_stable_read_report` | Получить сводный отчёт. |
+
+### Тестовые функции
+
+`tests/test_converter.py`: `test_gif_converts_to_jpeg` проверяет формат и
+размеры JPEG, `test_rejects_non_gif` — отклонение ложного GIF.
+
+`tests/test_mbt.py`: `QuietHandler.log_message` отключает вывод серверного
+журнала. `ApiMachine.__init__` поднимает тестовый HTTP-сервер,
+`teardown` его завершает, `initial_workflow` проходит девять маршрутов,
+`check_unassigned_participant` проверяет отчёт,
+`unauthenticated_is_rejected` — HTTP 401, `new_participant` и
+`new_assignment` — создание записей, `inspect_assignment` — чтение,
+`read_model_matches` — инварианты данных. `FileApiMachine` и
+`SQLiteApiMachine` запускают одну модель на разных хранилищах.
+
+### Параметры и конфигурация
+
+| Настройка | Где задаётся | Значение и назначение |
+|---|---|---|
+| `username`, `password` | `config.ini`, раздел `[auth]` | Учётные данные HTTP Basic Auth. |
+| `--config` | `run.py` | Путь к INI-файлу, по умолчанию `config.ini`. |
+| `--backend` | `run.py` | `file` (JSON) или `sqlite` (SQLite); по умолчанию `file`. |
+| `--test-mode` | `run.py` | Пропускает реальное преобразование изображений. |
+| `--host` | `run.py` | Интерфейс сервера, по умолчанию `127.0.0.1`. |
+| `--port` | `run.py` | Порт сервера, по умолчанию `8000`. |
+| `input`, `output` | `src.converter` | Позиционные пути к входному GIF и выходному JPEG. |
+| `data/uploads/` | проект | Каталог входных файлов для API. |
+| `data/outputs/` | проект | Каталог преобразованных JPEG. |
+| `MAX_CONVERSION_SECONDS` | `src/service.py` | Тайм-аут процесса конвертации: 60 секунд. |
+| `JPEG_QUALITY` | `src/converter.py` | Качество сохранения JPEG: 90. |
+| `BACKGROUND_COLOR` | `src/converter.py` | Белый фон для прозрачных кадров. |
+| `max_examples`, `stateful_step_count` | `tests/test_mbt.py` | Число примеров Hypothesis (12) и шагов (10). |
+
+Зависимости перечислены в `requirements.txt`: `bottle`, `Pillow`,
+`hypothesis`, `coverage`. Установка производится одной командой из раздела
+«Установка». Файлы настроек, базы данных и изображения исключены из Git.
+
 ## Структура
 
 ```text
