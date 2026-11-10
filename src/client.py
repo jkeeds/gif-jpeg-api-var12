@@ -3,7 +3,7 @@
 import base64
 import urllib.parse
 import urllib.request
-import xml.etree.ElementTree as element_tree
+import xml.etree.ElementTree as ET
 
 
 BASE_ROUTE = "/core/api/stable"
@@ -29,7 +29,7 @@ class ApiClient:
             },
         )
         with urllib.request.urlopen(req, timeout=10) as response:
-            root = element_tree.fromstring(response.read())
+            root = ET.fromstring(response.read())
         rows = []
         for item in root.findall("./items/item"):
             row = {}

@@ -3,7 +3,7 @@
 import base64
 import binascii
 import hmac
-import xml.etree.ElementTree as element_tree
+import xml.etree.ElementTree as ET
 
 from bottle import Bottle, HTTPResponse, request, response
 
@@ -14,17 +14,17 @@ MIN_IDENTIFIER = 1
 
 def xml_document(payload):
     """Serialize one row or a list of rows into the required XML format."""
-    root = element_tree.Element("response")
-    container = element_tree.SubElement(root, "items")
+    root = ET.Element("response")
+    container = ET.SubElement(root, "items")
     records = payload if isinstance(payload, list) else [payload]
     for record in records:
-        item = element_tree.SubElement(container, "item")
+        item = ET.SubElement(container, "item")
         for name, value in record.items():
-            child = element_tree.SubElement(item, name)
+            child = ET.SubElement(item, name)
             child.text = "" if value is None else str(value)
             if value is None:
                 child.set("null", "true")
-    return element_tree.tostring(root, encoding="unicode")
+    return ET.tostring(root, encoding="unicode")
 
 
 def _is_authorized(header, username, password):
