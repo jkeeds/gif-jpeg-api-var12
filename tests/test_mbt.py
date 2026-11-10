@@ -120,6 +120,7 @@ class ApiMachine(RuleBasedStateMachine):
             urllib.error.HTTPError
         ) as caught:
             urllib.request.urlopen(url, timeout=10)
+        caught.exception.close()
         assert caught.exception.code == HTTP_UNAUTHORIZED
 
     @rule(platform=st.sampled_from(["desktop", "mobile", "web"]),
