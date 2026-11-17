@@ -125,24 +125,25 @@ class FileStore:
         threshold = _now() - seconds
         participants = self.participant_read()
         assignments = self.assignment_read()
-        results = self.result_read()
+        recent_by_assignment = {}
+        for result in self.result_read():
+            if result["datetime"] >= threshold:
+                assignment_id = result["assignment"]
+                cache_hits = recent_by_assignment.setdefault(assignment_id, [])
+                cache_hits.append(result["cache_hit"])
+
         rows = []
         for person in participants:
-            linked = [
-                assignment for assignment in assignments
-                if assignment["participant"] == person["identifier"]
-            ]
-            for assignment in linked:
-                recent = [
-                    item for item in results
-                    if item["assignment"] == assignment["identifier"]
-                    and item["datetime"] >= threshold
-                ]
-                for item in recent or [None]:
+            for assignment in assignments:
+                if assignment["participant"] != person["identifier"]:
+                    continue
+                for cache_hit in recent_by_assignment.get(
+                    assignment["identifier"], [None],
+                ):
                     rows.append({
                         "input": assignment["input"],
                         "platform": person["platform"],
-                        "cache_hit": item["cache_hit"] if item else None,
+                        "cache_hit": cache_hit,
                     })
         return rows
 

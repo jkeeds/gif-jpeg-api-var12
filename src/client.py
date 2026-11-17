@@ -3,7 +3,7 @@
 import base64
 import urllib.parse
 import urllib.request
-import xml.etree.ElementTree as ET
+import xml.etree.ElementTree
 
 
 BASE_ROUTE = "/core/api/stable"
@@ -14,7 +14,7 @@ class ApiClient:
 
     def __init__(self, base_url, username, password):
         self.base_url = base_url.rstrip("/")
-        raw = f"{username}:{password}".encode("utf-8")
+        raw = "{}:{}".format(username, password).encode("utf-8")
         self.authorization = "Basic " + base64.b64encode(raw).decode("ascii")
 
     def _request(self, method, route, **params):
@@ -29,7 +29,7 @@ class ApiClient:
             },
         )
         with urllib.request.urlopen(req, timeout=10) as response:
-            root = ET.fromstring(response.read())
+            root = xml.etree.ElementTree.fromstring(response.read())
         rows = []
         for item in root.findall("./items/item"):
             row = {}

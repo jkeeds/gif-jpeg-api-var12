@@ -56,7 +56,7 @@ class ApiMachine(RuleBasedStateMachine):
             target=self.server.serve_forever, daemon=True,
         )
         self.worker.start()
-        address = f"http://127.0.0.1:{self.server.server_port}"
+        address = "http://127.0.0.1:{}".format(self.server.server_port)
         self.client = ApiClient(address, USERNAME, PASSWORD)
         self.base_url = address
         self.participants = []
